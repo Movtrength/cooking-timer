@@ -16,24 +16,17 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-appl
 button{font:inherit;color:inherit}
 .back-btn{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:6px 12px;font-size:14px;cursor:pointer}
 .hide{display:none!important}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:10px;padding:14px;max-width:780px;margin:0 auto}
-.card{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;cursor:pointer}
-.card:active{transform:scale(.98)}
-.card-title{font-weight:650;font-size:15px}
-.card-meta{font-size:13px;color:var(--muted)}
-.badge{font-size:11px;line-height:1.5;padding:2px 8px;border-radius:999px;background:var(--warn-bg);color:var(--warn-tx)}
 .filters{max-width:780px;margin:0 auto;padding:14px 14px 0}
 #search{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font:inherit;font-size:14px}
-#search:focus{outline:2px solid var(--accent);outline-offset:-1px}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-.chip{border:1px solid var(--border);background:var(--card);border-radius:999px;padding:5px 12px;font-size:13px;cursor:pointer}
-.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
-.chip.cut.on{background:var(--warn-bg);border-color:var(--warn-tx);color:var(--warn-tx)}
+#search:focus,.fsel:focus{outline:2px solid var(--accent);outline-offset:-1px}
 .fgroup{margin-top:12px}
-.flabel{margin:0 0 4px;font-size:12px;font-weight:700;color:var(--muted)}
-.fhint{margin:0 0 4px;font-size:12px;color:var(--muted)}
-.fgroup .chips{margin-top:0}
+.flabel{display:block;margin:0;font-size:12px;font-weight:700;color:var(--muted)}
+.fsel{display:block;width:100%;margin-top:4px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font:inherit;font-size:14px;font-weight:400}
+.fhint{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.check{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px;font-weight:600}
+.check input{width:18px;height:18px;margin:0}
 #count{font-size:13px;color:var(--muted);margin:10px 0 0}
+#empty:empty{display:none}
 .recipe{max-width:660px;margin:0 auto;padding:16px 16px 0}
 h1.r-title{margin:0;font-size:22px;line-height:1.35}
 .meta{font-size:13px;color:var(--muted);margin-top:3px}
@@ -81,11 +74,14 @@ details.info pre{white-space:pre-wrap;word-break:break-word;font-size:13px;color
 <section id="menuView">
 <div class="filters">
 <input id="search" type="search" placeholder="제목·재료·태그 검색" aria-label="레시피 검색" autocomplete="off">
-<div id="chips" class="chips" role="group" aria-label="코스"></div>
 <div id="facetBox"></div>
 <p id="count"></p>
+<div class="fgroup">
+<label class="flabel" for="recipePick">레시피</label>
+<select id="recipePick" class="fsel" aria-label="레시피"></select>
 </div>
-<div id="grid" class="grid"></div>
+<p id="empty" class="meta"></p>
+</div>
 </section>
 <section id="recipeView" class="hide"><div id="rbody" class="recipe"></div></section>
 </main>
@@ -169,89 +165,115 @@ function matches(r) {
   const hay = [r.title, tagText(r.tags)].concat((r.ingredients || []).map(g => g.name || "")).join(" ").toLowerCase();
   return hay.indexOf(q) !== -1;
 }
-function addChip(parent, label, on, fn, extra) {
-  const b = el("button", "chip" + (on ? " on" : "") + (extra || ""), label);
-  b.type = "button";
-  b.setAttribute("aria-pressed", on ? "true" : "false");
-  b.addEventListener("click", fn);
-  parent.appendChild(b);
-  return b;
+function option(value, text) {
+  const o = el("option", null, text);
+  o.value = value;
+  return o;
 }
-function buildChips() {
-  const box = $("chips");
-  box.textContent = "";
-  const courses = [];
-  RECIPES.forEach(r => { const c = r.course || ""; if (c && courses.indexOf(c) === -1) courses.push(c); });
-  addChip(box, "전체", courseSel === "전체", () => { courseSel = "전체"; renderMenu(); });
-  courses.forEach(c => addChip(box, c, courseSel === c, () => { courseSel = c; renderMenu(); }));
-  addChip(box, "초안 숨기기", hideDraft, () => { hideDraft = !hideDraft; renderMenu(); });
-}
-function buildSelectRow(title, labels, selected, onPick) {
+function addDropdown(parent, title, id, labels, selected, onPick) {
   const row = el("div", "fgroup");
-  row.appendChild(el("p", "flabel", title));
-  const box = el("div", "chips");
-  box.setAttribute("role", "group");
-  box.setAttribute("aria-label", title);
-  addChip(box, "전체", selected === "전체", () => onPick("전체"));
-  (labels || []).forEach(name => addChip(box, name, selected === name, () => onPick(name)));
-  row.appendChild(box);
-  return row;
+  const lab = el("label", "flabel", title);
+  lab.htmlFor = id;
+  const sel = document.createElement("select");
+  sel.id = id;
+  sel.className = "fsel";
+  sel.setAttribute("aria-label", title);
+  sel.appendChild(option("전체", "전체"));
+  (labels || []).forEach(name => sel.appendChild(option(name, name)));
+  const known = selected === "전체" || (labels || []).indexOf(selected) !== -1;
+  sel.value = known ? selected : "전체";
+  sel.addEventListener("change", () => onPick(sel.value));
+  row.appendChild(lab);
+  row.appendChild(sel);
+  parent.appendChild(row);
+  return sel;
+}
+function activeFlag(flags) {
+  for (let i = 0; i < flags.length; i++) if (flagOn[flags[i]]) return flags[i];
+  return "전체";
 }
 function buildFacets() {
   const host = $("facetBox");
   if (!host) return;
   host.textContent = "";
-  if (!FACETS) return;
-  host.appendChild(buildSelectRow("종류", FACETS.category, catSel, v => { catSel = v; renderMenu(); }));
-  host.appendChild(buildSelectRow("소스", FACETS.sauces, sauceSel, v => { sauceSel = v; renderMenu(); }));
-  host.appendChild(buildSelectRow("재료", FACETS.ingredients, ingSel, v => { ingSel = v; renderMenu(); }));
-  const flags = FACETS.flags || [];
-  if (!flags.length) return;
-  const row = el("div", "fgroup");
-  row.appendChild(el("p", "flabel", "조건"));
-  row.appendChild(el("p", "fhint", "해산물을 켜면 그 요리를 숨깁니다. 다른 조건은 해당 요리만 남깁니다."));
-  const box = el("div", "chips");
-  box.setAttribute("role", "group");
-  box.setAttribute("aria-label", "조건");
-  flags.forEach(name => {
-    const on = !!flagOn[name];
-    const b = addChip(box, name, on, () => { flagOn[name] = !flagOn[name]; renderMenu(); }, name === "해산물" ? " cut" : "");
-    if (name === "해산물") b.title = "켜면 해산물 요리를 숨깁니다";
-  });
-  row.appendChild(box);
-  host.appendChild(row);
+  const courses = [];
+  RECIPES.forEach(r => { const c = r.course || ""; if (c && courses.indexOf(c) === -1) courses.push(c); });
+  addDropdown(host, "코스", "coursePick", courses, courseSel, v => { courseSel = v; renderMenu(); });
+  if (FACETS) {
+    addDropdown(host, "음식 카테고리", "catPick", FACETS.category, catSel, v => { catSel = v; renderMenu(); });
+    addDropdown(host, "소스", "saucePick", FACETS.sauces, sauceSel, v => { sauceSel = v; renderMenu(); });
+    addDropdown(host, "식재료", "ingPick", FACETS.ingredients, ingSel, v => { ingSel = v; renderMenu(); });
+    const flags = FACETS.flags || [];
+    if (flags.length) {
+      const row = el("div", "fgroup");
+      const lab = el("label", "flabel", "조건");
+      lab.htmlFor = "flagPick";
+      const sel = document.createElement("select");
+      sel.id = "flagPick";
+      sel.className = "fsel";
+      sel.setAttribute("aria-label", "조건");
+      sel.appendChild(option("전체", "전체"));
+      flags.forEach(name => sel.appendChild(option(name, name)));
+      sel.value = activeFlag(flags);
+      sel.addEventListener("change", () => {
+        flags.forEach(name => { flagOn[name] = name === sel.value; });
+        renderMenu();
+      });
+      row.appendChild(lab);
+      row.appendChild(sel);
+      row.appendChild(el("p", "fhint", "해산물을 고르면 그 요리를 숨깁니다. 다른 조건은 해당 요리만 남깁니다."));
+      host.appendChild(row);
+    }
+  }
+  const draft = el("label", "check");
+  const inp = document.createElement("input");
+  inp.type = "checkbox";
+  inp.id = "hideDraft";
+  inp.checked = hideDraft;
+  inp.setAttribute("aria-label", "초안 숨기기");
+  inp.addEventListener("change", () => { hideDraft = inp.checked; renderMenu(); });
+  draft.appendChild(inp);
+  draft.appendChild(document.createTextNode("초안 숨기기"));
+  host.appendChild(draft);
+}
+function showRecipe(on) {
+  $("recipeView").classList.toggle("hide", !on);
+  $("backBtn").classList.toggle("hide", !on);
 }
 function renderMenu() {
-  const g = $("grid");
-  g.textContent = "";
-  buildChips();
   buildFacets();
-  $("count").textContent = "";
-  if (!RECIPES.length) { g.appendChild(el("p", "meta", "레시피가 없습니다.")); return; }
+  const sel = $("recipePick");
+  const empty = $("empty");
+  sel.textContent = "";
+  if (!RECIPES.length) {
+    $("count").textContent = "0개 중 0개";
+    empty.textContent = "레시피가 없습니다.";
+    cur = -1;
+    showRecipe(false);
+    return;
+  }
   const vis = [];
   RECIPES.forEach((r, i) => { if (matches(r)) vis.push(i); });
   $("count").textContent = RECIPES.length + "개 중 " + vis.length + "개";
-  if (!vis.length) { g.appendChild(el("p", "meta", "일치하는 레시피가 없습니다.")); return; }
-  vis.forEach(i => {
-    const r = RECIPES[i];
-    const c = el("button", "card");
-    c.type = "button";
-    c.appendChild(el("div", "card-title", r.title));
-    c.appendChild(el("div", "card-meta", fmt1(r.total_min) + "분 · " + fmt1(r.servings) + "인분"));
-    if (r.status === "inbox") c.appendChild(el("span", "badge", "초안 · 양 일부 미확인"));
-    c.addEventListener("click", () => openRecipe(i));
-    g.appendChild(c);
-  });
+  empty.textContent = vis.length ? "" : "일치하는 레시피가 없습니다.";
+  sel.appendChild(option("", vis.length ? "레시피를 고르세요" : "일치하는 레시피 없음"));
+  vis.forEach(i => sel.appendChild(option(String(i), RECIPES[i].title)));
+  if (cur >= 0 && vis.indexOf(cur) === -1) {
+    cur = -1;
+    scale = null;
+    $("rbody").textContent = "";
+  }
+  sel.value = cur >= 0 ? String(cur) : "";
+  showRecipe(cur >= 0);
 }
-
-function show(recipe) {
-  $("menuView").classList.toggle("hide", recipe);
-  $("recipeView").classList.toggle("hide", !recipe);
-  $("backBtn").classList.toggle("hide", !recipe);
-  window.scrollTo(0, 0);
+function openRecipe(i) {
+  cur = i;
+  scale = null;
+  renderRecipe();
+  showRecipe(true);
+  const sel = $("recipePick");
+  if (sel) sel.value = String(i);
 }
-
-function openRecipe(i) { cur = i; scale = null; renderRecipe(); show(true); }
 
 function renderRecipe() {
   const r = RECIPES[cur], v = $("rbody");
@@ -434,7 +456,25 @@ function beep() {
 
 document.addEventListener("pointerdown", unlockAudio, true);
 document.addEventListener("click", unlockAudio, true);
-$("backBtn").addEventListener("click", () => show(false));
+$("backBtn").addEventListener("click", () => {
+  cur = -1;
+  scale = null;
+  $("rbody").textContent = "";
+  $("recipePick").value = "";
+  showRecipe(false);
+  window.scrollTo(0, 0);
+});
+$("recipePick").addEventListener("change", () => {
+  const v = $("recipePick").value;
+  if (v === "") {
+    cur = -1;
+    scale = null;
+    $("rbody").textContent = "";
+    showRecipe(false);
+    return;
+  }
+  openRecipe(Number(v));
+});
 $("search").addEventListener("input", e => { query = e.target.value; renderMenu(); });
 if (location.search.indexOf("test=1") !== -1) globalThis.__menuTest = { matches };
 renderMenu();
