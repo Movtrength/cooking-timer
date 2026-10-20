@@ -14,6 +14,27 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-appl
 .topbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border)}
 .brand{font-weight:700;font-size:15px}
 .app-ver{margin-left:auto;font-size:12px;font-weight:650;color:var(--muted);letter-spacing:.02em}
+.modebar{background:var(--card);border-bottom:1px solid var(--border)}
+.modes{max-width:780px;margin:0 auto;display:flex;gap:8px;padding:8px 14px}
+.mode-btn{flex:1;border:1px solid var(--border);background:var(--bg);border-radius:999px;padding:7px 12px;font-size:14px;font-weight:650;cursor:pointer}
+.mode-btn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.meal-lead{margin:0;font-size:14px}
+#mealCount{font-size:13px;color:var(--muted);margin:8px 0 0}
+.meal-block{margin-top:16px}
+.meal-slot{margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.meal-h{margin:0 0 8px;font-size:15px;font-weight:700}
+.meal-add{display:flex;gap:8px;align-items:center}
+.meal-add .fsel{margin-top:0;flex:1;min-width:0}
+.meal-add-btn,.meal-open,.meal-remove{border:1px solid var(--border);background:var(--card);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:650;cursor:pointer}
+.meal-add-btn,.meal-open{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.meal-item{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--bg)}
+.meal-title{flex:1;min-width:0;border:0;background:transparent;padding:0;text-align:left;font-size:14px;font-weight:650;cursor:pointer;color:var(--text)}
+.meal-empty{margin:8px 0 0;font-size:13px;color:var(--muted)}
+.meal-recipes{list-style:none;margin:8px 0 0;padding:0;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.meal-recipe{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border)}
+.meal-recipe:last-child{border-bottom:0}
+.meal-recipe-name{flex:1;min-width:0;border:0;background:transparent;padding:0;text-align:left;font-size:14px;font-weight:600;cursor:pointer;color:var(--text)}
+.meal-course{flex:0 0 auto;font-size:12px;color:var(--muted)}
 button{font:inherit;color:inherit}
 .back-btn{border:1px solid var(--border);background:var(--bg);border-radius:8px;padding:6px 12px;font-size:14px;cursor:pointer}
 .hide{display:none!important}
@@ -80,7 +101,13 @@ details.info pre{white-space:pre-wrap;word-break:break-word;font-size:13px;color
 <div class="topbar">
 <button id="backBtn" type="button" class="back-btn hide">← 목록</button>
 <span class="brand">요리 레시피</span>
-<span class="app-ver">v3.6</span>
+<span class="app-ver">v3.7</span>
+</div>
+<div id="modebar" class="modebar">
+<div class="modes" role="tablist" aria-label="화면">
+<button id="modeRecipes" type="button" class="mode-btn on" role="tab" aria-selected="true">레시피</button>
+<button id="modeMeals" type="button" class="mode-btn" role="tab" aria-selected="false">콩팥 끼니</button>
+</div>
 </div>
 <main>
 <section id="menuView">
@@ -93,6 +120,13 @@ details.info pre{white-space:pre-wrap;word-break:break-word;font-size:13px;color
 <select id="recipePick" class="fsel" aria-label="레시피"></select>
 </div>
 <p id="empty" class="meta"></p>
+</div>
+</section>
+<section id="mealView" class="hide">
+<div class="filters">
+<p class="meal-lead">콩팥으로 표시된 레시피만 모아 끼니를 조합합니다.</p>
+<p id="mealCount"></p>
+<div id="mealBoard"></div>
 </div>
 </section>
 <section id="recipeView" class="hide"><div id="rbody" class="recipe"></div></section>
@@ -108,8 +142,11 @@ const $ = id => document.getElementById(id);
 let cur = -1, scale = null, timers = [], tickId = null, actx = null, toastTid = null;
 let query = "", courseSel = "전체", hideDraft = false, audioUnlocked = false;
 let catSel = "전체";
+let mode = "recipes";
 const sauceSel = [], ingSel = [];
 const flagOn = {};
+const MEAL_NAMES = ["아침", "점심", "저녁"];
+const plan = { "아침": [], "점심": [], "저녁": [] };
 
 const el = (t, c, tx) => {
   const e = document.createElement(t);
@@ -148,6 +185,22 @@ function tagText(t) {
   if (t == null) return "";
   if (Array.isArray(t)) return t.join(" ");
   return String(t).replace(/[\[\]]/g, "");
+}
+function isWideRiceNoodle(r) {
+  const f = facetOf(r);
+  if (f.ingredients.indexOf("넓은 쌀국수면") !== -1) return true;
+  const title = String((r && r.title) || "");
+  return title.indexOf("꾸어이띠여우") !== -1 || title === "볶음쌀국수";
+}
+function isKidneyRecipe(r) {
+  if (!r || isWideRiceNoodle(r)) return false;
+  if (facetOf(r).flags.indexOf("콩팥") !== -1) return true;
+  return tagText(r.tags).indexOf("콩팥") !== -1;
+}
+function kidneyIndexes() {
+  const list = [];
+  RECIPES.forEach((r, i) => { if (isKidneyRecipe(r)) list.push(i); });
+  return list;
 }
 function facetOf(r) {
   const f = (r && r.facets) || {};
@@ -321,8 +374,110 @@ function buildFacets() {
   host.appendChild(draft);
 }
 function showRecipe(on) {
-  $("recipeView").classList.toggle("hide", !on);
-  $("backBtn").classList.toggle("hide", !on);
+  applyMode(on);
+}
+function applyMode(recipeOn) {
+  const open = recipeOn != null ? recipeOn : cur >= 0;
+  $("recipeView").classList.toggle("hide", !open);
+  $("backBtn").classList.toggle("hide", !open);
+  $("modebar").classList.toggle("hide", open);
+  $("menuView").classList.toggle("hide", open || mode !== "recipes");
+  $("mealView").classList.toggle("hide", open || mode !== "meals");
+  $("modeRecipes").classList.toggle("on", mode === "recipes");
+  $("modeMeals").classList.toggle("on", mode === "meals");
+  $("modeRecipes").setAttribute("aria-selected", mode === "recipes" ? "true" : "false");
+  $("modeMeals").setAttribute("aria-selected", mode === "meals" ? "true" : "false");
+}
+function setMode(next) {
+  mode = next;
+  if (cur >= 0) {
+    cur = -1;
+    scale = null;
+    $("rbody").textContent = "";
+    $("recipePick").value = "";
+  }
+  if (mode === "meals") renderMeals();
+  else renderMenu();
+  applyMode(false);
+}
+function addToMeal(name, index) {
+  const r = RECIPES[index];
+  if (!r || !isKidneyRecipe(r)) return;
+  const slot = plan[name];
+  if (slot.indexOf(index) !== -1) { toast("이미 이 끼니에 있습니다"); return; }
+  slot.push(index);
+  renderMeals();
+}
+function openFromMeal(index) {
+  if (!isKidneyRecipe(RECIPES[index])) return;
+  mode = "meals";
+  openRecipe(index);
+}
+function renderMeals() {
+  const host = $("mealBoard");
+  const kids = kidneyIndexes();
+  $("mealCount").textContent = "콩팥 레시피 " + kids.length + "개";
+  host.textContent = "";
+  const planBlock = el("div", "meal-block");
+  planBlock.appendChild(el("h2", "sec-h", "끼니별 조합"));
+  MEAL_NAMES.forEach(name => {
+    const slot = el("section", "meal-slot");
+    slot.appendChild(el("h3", "meal-h", name));
+    const add = el("div", "meal-add");
+    const sel = document.createElement("select");
+    sel.className = "fsel";
+    sel.id = "mealPick-" + name;
+    sel.setAttribute("aria-label", name + "에 담을 요리");
+    sel.appendChild(option("", "요리를 고르세요"));
+    kids.forEach(i => sel.appendChild(option(String(i), RECIPES[i].title)));
+    const btn = el("button", "meal-add-btn", "담기");
+    btn.type = "button";
+    btn.addEventListener("click", () => {
+      if (sel.value === "") { toast("요리를 고르세요"); return; }
+      addToMeal(name, Number(sel.value));
+    });
+    add.appendChild(sel);
+    add.appendChild(btn);
+    slot.appendChild(add);
+    const chosen = plan[name];
+    if (!chosen.length) slot.appendChild(el("p", "meal-empty", "아직 담긴 요리가 없습니다."));
+    chosen.forEach(i => {
+      const row = el("div", "meal-item");
+      const titleBtn = el("button", "meal-title", RECIPES[i].title);
+      titleBtn.type = "button";
+      titleBtn.addEventListener("click", () => openFromMeal(i));
+      const openBtn = el("button", "meal-open", "열기");
+      openBtn.type = "button";
+      openBtn.addEventListener("click", () => openFromMeal(i));
+      const rm = el("button", "meal-remove", "빼기");
+      rm.type = "button";
+      rm.addEventListener("click", () => {
+        plan[name] = plan[name].filter(x => x !== i);
+        renderMeals();
+      });
+      row.appendChild(titleBtn);
+      row.appendChild(openBtn);
+      row.appendChild(rm);
+      slot.appendChild(row);
+    });
+    planBlock.appendChild(slot);
+  });
+  host.appendChild(planBlock);
+  const listBlock = el("div", "meal-block");
+  listBlock.appendChild(el("h2", "sec-h", "콩팥 레시피"));
+  const ul = el("ul", "meal-recipes");
+  kids.forEach(i => {
+    const li = el("li", "meal-recipe");
+    const b = el("button", "meal-recipe-name", RECIPES[i].title);
+    b.type = "button";
+    b.addEventListener("click", () => openFromMeal(i));
+    li.appendChild(b);
+    const course = RECIPES[i].course || "";
+    if (course) li.appendChild(el("span", "meal-course", course));
+    ul.appendChild(li);
+  });
+  listBlock.appendChild(ul);
+  host.appendChild(listBlock);
 }
 function renderMenu() {
   if (!$("facetBox").childElementCount) buildFacets();
@@ -581,9 +736,12 @@ $("backBtn").addEventListener("click", () => {
   scale = null;
   $("rbody").textContent = "";
   $("recipePick").value = "";
+  if (mode === "meals") renderMeals();
   showRecipe(false);
   window.scrollTo(0, 0);
 });
+$("modeRecipes").addEventListener("click", () => setMode("recipes"));
+$("modeMeals").addEventListener("click", () => setMode("meals"));
 $("recipePick").addEventListener("change", () => {
   const v = $("recipePick").value;
   if (v === "") {
@@ -596,7 +754,7 @@ $("recipePick").addEventListener("change", () => {
   openRecipe(Number(v));
 });
 $("search").addEventListener("input", e => { query = e.target.value; renderMenu(); });
-if (location.search.indexOf("test=1") !== -1) globalThis.__menuTest = { matches };
+if (location.search.indexOf("test=1") !== -1) globalThis.__menuTest = { matches, isKidneyRecipe, kidneyIndexes, isWideRiceNoodle };
 renderMenu();
 })();
 </script>
