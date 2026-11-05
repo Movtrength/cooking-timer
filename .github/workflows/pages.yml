@@ -21,8 +21,12 @@ jobs:
       - uses: actions/configure-pages@v5
         with:
           enablement: true
-      - name: Prepare site (index.html only)
-        run: mkdir _site && cp index.html _site/index.html
+      - name: Prepare site (app + PWA assets)
+        run: |
+          mkdir _site
+          cp index.html manifest.webmanifest sw.js _site/
+          cp -R icons _site/icons
+          ls -R _site
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
