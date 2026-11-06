@@ -1,5 +1,5 @@
-/* 요리 레시피 v4.3 — 오프라인 캐시 */
-const CACHE = 'cooking-timer-v4.3';
+/* 요리 레시피 v4.4 — 오프라인 캐시 */
+const CACHE = 'cooking-timer-v4.4';
 const SHELL = [
   './',
   './index.html',
